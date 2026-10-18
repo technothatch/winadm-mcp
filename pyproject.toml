@@ -1,0 +1,31 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "winadm-mcp"
+version = "0.1.0"
+description = "MCP server for Windows administration: services, processes, event log and system info for AI agents"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10"
+authors = [{ name = "technothatch" }]
+keywords = ["mcp", "windows", "admin", "services", "eventlog", "ai-agents"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: Microsoft :: Windows",
+    "Topic :: System :: Systems Administration",
+]
+dependencies = ["mcp>=1.9,<2"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[project.scripts]
+winadm-mcp = "winadm_mcp.server:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/winadm_mcp"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
