@@ -158,30 +158,59 @@ def test_ps_error_surfaces(monkeypatch):
     assert srv.list_services().startswith("error:")
 
 
+class FakePSCapture:
+    def __init__(self, mapping):
+        self.mapping = mapping
+        self.calls = []
+
+    def __call__(self, script, timeout=30):
+        self.calls.append(script)
+        for key, value in self.mapping.items():
+            if key in script:
+                if isinstance(value, Exception):
+                    raise value
+                return value
+        raise AssertionError(f"unexpected script: {script}")
+
+
 def test_run_powershell_command_gate(monkeypatch):
-    fake = FakePS({})
-    monkeypatch.setattr(srv.powershell, "run_powershell", fake)
+    fake = FakePSCapture({})
+    monkeypatch.setattr(srv.powershell, "run_powershell_capture", fake)
     assert srv.run_powershell_command("whoami", allow_write=False).startswith("error:")
     assert fake.calls == []
 
 
 def test_run_powershell_command_validates_empty(monkeypatch):
-    fake = FakePS({})
-    monkeypatch.setattr(srv.powershell, "run_powershell", fake)
+    fake = FakePSCapture({})
+    monkeypatch.setattr(srv.powershell, "run_powershell_capture", fake)
     assert srv.run_powershell_command("   ", allow_write=True).startswith("error:")
     assert fake.calls == []
 
 
 def test_run_powershell_command_executes(monkeypatch):
-    fake = FakePS({"whoami": "desktop\\user\r\n"})
-    monkeypatch.setattr(srv.powershell, "run_powershell", fake)
-    assert srv.run_powershell_command("whoami", allow_write=True) == "desktop\\user"
+    fake = FakePSCapture({"whoami": ("desktop\\user\r\n", "", 0)})
+    monkeypatch.setattr(srv.powershell, "run_powershell_capture", fake)
+    assert srv.run_powershell_command("whoami", allow_write=True) == "desktop\\user\n[exit 0]"
+
+
+def test_run_powershell_command_reports_stderr_and_exit(monkeypatch):
+    fake = FakePSCapture({"Get-Item": ("", "Cannot find path 'C:\\nope'.\r\n", 1)})
+    monkeypatch.setattr(srv.powershell, "run_powershell_capture", fake)
+    out = srv.run_powershell_command("Get-Item C:\\nope", allow_write=True)
+    assert "[stderr] Cannot find path" in out
+    assert out.endswith("[exit 1]")
 
 
 def test_run_powershell_command_empty_output(monkeypatch):
-    fake = FakePS({"Write-Output": ""})
-    monkeypatch.setattr(srv.powershell, "run_powershell", fake)
-    assert srv.run_powershell_command("Write-Output $null", allow_write=True) == "(no output)"
+    fake = FakePSCapture({"Write-Output": ("", "", 0)})
+    monkeypatch.setattr(srv.powershell, "run_powershell_capture", fake)
+    assert srv.run_powershell_command("Write-Output $null", allow_write=True) == "[exit 0]"
+
+
+def test_run_powershell_command_wraps_exceptions(monkeypatch):
+    fake = FakePSCapture({"whoami": RuntimeError("boom")})
+    monkeypatch.setattr(srv.powershell, "run_powershell_capture", fake)
+    assert srv.run_powershell_command("whoami", allow_write=True) == "error: boom"
 
 
 def test_server_tool_registry(monkeypatch):

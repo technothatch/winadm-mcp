@@ -8,7 +8,7 @@ def encode_command(script: str) -> str:
     return base64.b64encode(script.encode("utf-16-le")).decode("ascii")
 
 
-def run_powershell(script: str, timeout: int = 30) -> str:
+def run_powershell_capture(script: str, timeout: int = 30) -> tuple[str, str, int]:
     if sys.platform != "win32":
         raise RuntimeError(
             "winadm-mcp tools require Windows (PowerShell not available on this platform)"
@@ -33,10 +33,15 @@ def run_powershell(script: str, timeout: int = 30) -> str:
         errors="replace",
         creationflags=creationflags,
     )
-    if proc.returncode != 0:
-        detail = (proc.stderr or proc.stdout or "").strip()
-        raise RuntimeError(f"powershell exited {proc.returncode}: {detail}")
-    return proc.stdout
+    return proc.stdout, proc.stderr, proc.returncode
+
+
+def run_powershell(script: str, timeout: int = 30) -> str:
+    out, err, code = run_powershell_capture(script, timeout)
+    if code != 0:
+        detail = (err or out or "").strip()
+        raise RuntimeError(f"powershell exited {code}: {detail}")
+    return out
 
 
 def parse_json_output(raw: str):

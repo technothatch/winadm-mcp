@@ -164,12 +164,17 @@ def run_powershell_command(command: str, allow_write: bool) -> str:
     if not (command or "").strip():
         return "error: command must not be empty"
     try:
-        out = powershell.run_powershell(command, timeout=120).rstrip()
+        out, err, code = powershell.run_powershell_capture(command, timeout=120)
     except Exception as e:
         return f"error: {e}"
-    if len(out) > OUTPUT_MAX:
-        out = out[: OUTPUT_MAX - 1] + "…"
-    return out if out else "(no output)"
+    text = out.rstrip()
+    err = err.rstrip()
+    if err:
+        text += ("\n" if text else "") + "[stderr] " + err
+    text += ("\n" if text else "") + f"[exit {code}]"
+    if len(text) > OUTPUT_MAX:
+        text = text[: OUTPUT_MAX - 1] + "…"
+    return text
 
 
 def system_info() -> str:
