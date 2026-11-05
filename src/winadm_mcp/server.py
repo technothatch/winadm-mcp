@@ -155,6 +155,23 @@ def get_eventlog(log_name: str = "System", max_events: int = 25, level: str = "e
     return "\n".join(lines) if lines else "(no events)"
 
 
+OUTPUT_MAX = 20_000
+
+
+def run_powershell_command(command: str, allow_write: bool) -> str:
+    if not allow_write:
+        return "error: write operations are disabled; restart the server with --allow-write"
+    if not (command or "").strip():
+        return "error: command must not be empty"
+    try:
+        out = powershell.run_powershell(command, timeout=120).rstrip()
+    except Exception as e:
+        return f"error: {e}"
+    if len(out) > OUTPUT_MAX:
+        out = out[: OUTPUT_MAX - 1] + "…"
+    return out if out else "(no output)"
+
+
 def system_info() -> str:
     script = (
         "$ErrorActionPreference='Stop'; "
@@ -213,6 +230,12 @@ def create_server(allow_write: bool = False) -> FastMCP:
         """Read recent events from a Windows event log (default: System,
         levels error/warning/critical, newest first)."""
         return get_eventlog(log_name=log_name, max_events=max_events, level=level)
+
+    @mcp.tool()
+    def run_powershell_command_tool(command: str) -> str:
+        """Run a PowerShell command on the Windows host and return stdout/stderr.
+        Requires --allow-write (this is arbitrary command execution)."""
+        return run_powershell_command(command, allow_write)
 
     @mcp.tool()
     def windows_system_info() -> str:

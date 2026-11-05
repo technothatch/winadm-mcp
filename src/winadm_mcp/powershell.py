@@ -13,6 +13,9 @@ def run_powershell(script: str, timeout: int = 30) -> str:
         raise RuntimeError(
             "winadm-mcp tools require Windows (PowerShell not available on this platform)"
         )
+    # CREATE_NO_WINDOW keeps PowerShell from flashing a console window when the
+    # MCP client is a GUI app (Claude Desktop and friends run without a console).
+    creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
     proc = subprocess.run(
         [
             "powershell",
@@ -28,6 +31,7 @@ def run_powershell(script: str, timeout: int = 30) -> str:
         timeout=timeout,
         encoding="utf-8",
         errors="replace",
+        creationflags=creationflags,
     )
     if proc.returncode != 0:
         detail = (proc.stderr or proc.stdout or "").strip()

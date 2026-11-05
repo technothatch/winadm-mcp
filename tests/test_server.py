@@ -158,6 +158,32 @@ def test_ps_error_surfaces(monkeypatch):
     assert srv.list_services().startswith("error:")
 
 
+def test_run_powershell_command_gate(monkeypatch):
+    fake = FakePS({})
+    monkeypatch.setattr(srv.powershell, "run_powershell", fake)
+    assert srv.run_powershell_command("whoami", allow_write=False).startswith("error:")
+    assert fake.calls == []
+
+
+def test_run_powershell_command_validates_empty(monkeypatch):
+    fake = FakePS({})
+    monkeypatch.setattr(srv.powershell, "run_powershell", fake)
+    assert srv.run_powershell_command("   ", allow_write=True).startswith("error:")
+    assert fake.calls == []
+
+
+def test_run_powershell_command_executes(monkeypatch):
+    fake = FakePS({"whoami": "desktop\\user\r\n"})
+    monkeypatch.setattr(srv.powershell, "run_powershell", fake)
+    assert srv.run_powershell_command("whoami", allow_write=True) == "desktop\\user"
+
+
+def test_run_powershell_command_empty_output(monkeypatch):
+    fake = FakePS({"Write-Output": ""})
+    monkeypatch.setattr(srv.powershell, "run_powershell", fake)
+    assert srv.run_powershell_command("Write-Output $null", allow_write=True) == "(no output)"
+
+
 def test_server_tool_registry(monkeypatch):
     fake = FakePS({"Get-Service": "[]", "Get-Process": "[]", "Get-WinEvent": "[]", "Win32_OperatingSystem": "{}"})
     monkeypatch.setattr(srv.powershell, "run_powershell", fake)
@@ -170,5 +196,6 @@ def test_server_tool_registry(monkeypatch):
         "list_windows_processes",
         "kill_process_tool",
         "read_eventlog",
+        "run_powershell_command_tool",
         "windows_system_info",
     }

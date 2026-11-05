@@ -22,6 +22,7 @@ Task Manager and Event Viewer.
 | `list_windows_processes` | read | PID, working set MB, CPU seconds |
 | `kill_process_tool` | **write** | force-kill by PID |
 | `read_eventlog` | read | newest events from any log (default System, error/warning/critical) |
+| `run_powershell_command_tool` | **write** | run a PowerShell command and return its output |
 | `windows_system_info` | read | OS, hostname, last boot, memory totals |
 
 **Read-only by default.** Write tools refuse to act unless the server is started with
