@@ -4,8 +4,8 @@
 services, processes, the event log and system info.**
 
 ```
-$ uvx winadm-mcp --allow-write
-# or: winadm-mcp
+$ pip install git+https://github.com/technothatch/winadm-mcp
+$ winadm-mcp --allow-write
 ```
 
 Point Claude Desktop / Claude Code / any MCP client at it and your agent can answer
@@ -30,12 +30,16 @@ Task Manager and Event Viewer.
 
 ## Install / run
 
-```
-uvx winadm-mcp                      # read-only (recommended first)
-uvx winadm-mcp --allow-write        # enable write tools
-```
-
-or `pip install winadm-mcp` and run `winadm-mcp`.
+> **Status:** not on PyPI yet. Install from GitHub until it is published:
+>
+> ```
+> pip install git+https://github.com/technothatch/winadm-mcp
+> winadm-mcp                      # read-only (recommended first)
+> winadm-mcp --allow-write        # enable write tools
+> ```
+>
+> The `uvx winadm-mcp` / `pip install winadm-mcp` forms will work once the
+> package is on PyPI.
 
 Claude Desktop config example:
 
