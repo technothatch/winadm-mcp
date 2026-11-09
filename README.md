@@ -28,6 +28,9 @@ Task Manager and Event Viewer.
 **Read-only by default.** Write tools refuse to act unless the server is started with
 `--allow-write`. Service names and PIDs are validated before they touch PowerShell.
 
+> **The story behind it:** [Give Windows administration tools a defined boundary](https://technothatch.iyre.com/blog/winadm-mcp-inside-the-project/)
+> — the TechnoThatch journal piece on the read-only-by-default design.
+
 ## Install / run
 
 > **Status:** not on PyPI yet. Install from GitHub until it is published:
