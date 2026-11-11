@@ -1,9 +1,11 @@
 import argparse
+import asyncio
+import os
 import re
 
-from mcp.server.fastmcp import FastMCP
+from mcp.server.fastmcp import Context, FastMCP
 
-from . import powershell
+from . import powershell, runner
 
 SERVICE_NAME_RE = re.compile(r"^[A-Za-z0-9_.\-]+$")
 PID_RE = re.compile(r"^[0-9]+$")
@@ -157,6 +159,31 @@ def get_eventlog(log_name: str = "System", max_events: int = 25, level: str = "e
 
 OUTPUT_MAX = 20_000
 
+#: How often progress notifications are sent while a command runs.
+PROGRESS_INTERVAL_SECONDS = float(os.environ.get("WINADM_PROGRESS_INTERVAL", "10"))
+
+#: How long a command may run before it is stopped.
+COMMAND_TIMEOUT_SECONDS = float(os.environ.get("WINADM_COMMAND_TIMEOUT", "120"))
+
+
+def _format_command_output(result: runner.CommandResult) -> str:
+    """Render a command result the same way for the sync and async paths."""
+    text = result.stdout.rstrip()
+    err = result.stderr.rstrip()
+    if err:
+        text += ("\n" if text else "") + "[stderr] " + err
+    if result.timed_out:
+        text += (
+            ("\n" if text else "")
+            + f"[timed out after {result.elapsed:.0f}s - the PowerShell process was "
+            "ended, but programs it started may still be running]"
+        )
+    else:
+        text += ("\n" if text else "") + f"[exit {result.returncode}]"
+    if len(text) > OUTPUT_MAX:
+        text = text[: OUTPUT_MAX - 1] + "…"
+    return text
+
 
 def run_powershell_command(command: str, allow_write: bool) -> str:
     if not allow_write:
@@ -164,17 +191,52 @@ def run_powershell_command(command: str, allow_write: bool) -> str:
     if not (command or "").strip():
         return "error: command must not be empty"
     try:
-        out, err, code = powershell.run_powershell_capture(command, timeout=120)
+        result = runner.run_command(command, timeout=120)
     except Exception as e:
         return f"error: {e}"
-    text = out.rstrip()
-    err = err.rstrip()
-    if err:
-        text += ("\n" if text else "") + "[stderr] " + err
-    text += ("\n" if text else "") + f"[exit {code}]"
-    if len(text) > OUTPUT_MAX:
-        text = text[: OUTPUT_MAX - 1] + "…"
-    return text
+    return _format_command_output(result)
+
+
+async def run_powershell_command_with_progress(
+    command: str, allow_write: bool, ctx: Context | None = None
+) -> str:
+    """Run a command, emitting progress notifications while it is running.
+
+    MCP clients give up on calls that stay silent (Claude Code aborts after
+    300s), so a long command that says nothing is indistinguishable from a
+    hung one.  Progress notifications keep the call alive for as long as the
+    command runs.
+    """
+    if not allow_write:
+        return "error: write operations are disabled; restart the server with --allow-write"
+    if not (command or "").strip():
+        return "error: command must not be empty"
+
+    timeout = COMMAND_TIMEOUT_SECONDS
+    cmd = runner.LiveCommand(command, timeout=timeout)
+    cmd.start()
+
+    try:
+        while not cmd.finished:
+            elapsed, tail = cmd.snapshot()
+            await asyncio.sleep(PROGRESS_INTERVAL_SECONDS)
+            if not cmd.finished and ctx is not None:
+                message = f"running {elapsed:.0f}s"
+                if tail:
+                    message += f" - last output: {tail.splitlines()[-1][:200]}"
+                try:
+                    await ctx.report_progress(progress=elapsed, total=timeout, message=message)
+                except Exception:
+                    # A client that does not want progress must not break the call.
+                    pass
+    finally:
+        cmd.wait(timeout=5)
+
+    if cmd.error is not None:
+        return f"error: {cmd.error}"
+    if cmd.result is None:  # pragma: no cover - defensive
+        return "error: command produced no result"
+    return _format_command_output(cmd.result)
 
 
 def system_info() -> str:
@@ -237,10 +299,14 @@ def create_server(allow_write: bool = False) -> FastMCP:
         return get_eventlog(log_name=log_name, max_events=max_events, level=level)
 
     @mcp.tool()
-    def run_powershell_command_tool(command: str) -> str:
+    async def run_powershell_command_tool(command: str, ctx: Context) -> str:
         """Run a PowerShell command on the Windows host and return stdout/stderr.
-        Requires --allow-write (this is arbitrary command execution)."""
-        return run_powershell_command(command, allow_write)
+        Requires --allow-write (this is arbitrary command execution).
+
+        Long-running commands send progress notifications while they run, so the
+        client does not treat a slow command as a dead one. On timeout the
+        output produced so far is returned along with the elapsed time."""
+        return await run_powershell_command_with_progress(command, allow_write, ctx)
 
     @mcp.tool()
     def windows_system_info() -> str:
